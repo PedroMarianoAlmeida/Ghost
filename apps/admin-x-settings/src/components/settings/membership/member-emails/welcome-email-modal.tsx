@@ -1,5 +1,5 @@
 import NiceModal from '@ebay/nice-modal-react';
-import {useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 
 import MemberEmailEditor from './member-email-editor';
 import {Button, Hint, Modal, TextField} from '@tryghost/admin-x-design-system';
@@ -47,11 +47,12 @@ const WelcomeEmailModal = NiceModal.create<WelcomeEmailModalProps>(({emailType =
     const {mutateAsync: editAutomatedEmail} = useEditAutomatedEmail();
     const [showTestDropdown, setShowTestDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const hasSyncedInitialEditorState = useRef(false);
     const handleError = useHandleError();
     const {settings} = useGlobalData();
     const [siteTitle, defaultEmailAddress] = getSettingValues<string>(settings, ['title', 'default_email_address']);
 
-    const {formState, saveState, updateForm, handleSave, okProps, errors, validate} = useForm({
+    const {formState, saveState, updateForm, setFormState, handleSave, okProps, errors, validate} = useForm({
         initialState: {
             subject: automatedEmail?.subject || 'Welcome',
             lexical: automatedEmail?.lexical || ''
@@ -110,6 +111,19 @@ const WelcomeEmailModal = NiceModal.create<WelcomeEmailModalProps>(({emailType =
             window.removeEventListener('keydown', handleCMDS);
         };
     }, []);
+
+    // The editor normalizes content on mount (e.g., processing {name} templates),
+    // which triggers onChange even without user edits. We use setFormState for
+    // the first change to sync the normalized state without marking the form dirty.
+    const handleEditorChange = useCallback((lexical: string) => {
+        if (!hasSyncedInitialEditorState.current) {
+            hasSyncedInitialEditorState.current = true;
+            setFormState(state => ({...state, lexical}));
+            return;
+        }
+
+        updateForm(state => ({...state, lexical}));
+    }, [setFormState, updateForm]);
 
     const senderEmail = automatedEmail?.sender_email || defaultEmailAddress;
     const replyToEmail = automatedEmail?.sender_reply_to || defaultEmailAddress;
@@ -188,7 +202,7 @@ const WelcomeEmailModal = NiceModal.create<WelcomeEmailModalProps>(({emailType =
                             placeholder='Write your welcome email content...'
                             singleParagraph={false}
                             value={formState.lexical}
-                            onChange={lexical => updateForm(state => ({...state, lexical}))}
+                            onChange={handleEditorChange}
                         />
                     </div>
                     {errors.lexical && <Hint className='ml-8 mr-auto mt-2 max-w-[600px]' color='red'>{errors.lexical}</Hint>}
